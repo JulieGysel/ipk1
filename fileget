@@ -2,44 +2,90 @@
 
 import argparse
 import socket
+import logging as log
+import re
+
+
+def parseAddress(addr):
+    addr = addr.split(':')
+    return (addr[0], int(addr[1]))
+
+
+def parseUrl(url):
+    url = url.split('/')
+    if (url[0] != 'fsp:' or url[1] != ''):
+        log.error("file url format incorrect")
+        log.error(str(url))
+        exit(1)
+
+    del url[:2]
+    return {'url': url[0], 'file': url[1]}
+
+
+def getAddress(addr, file_server):
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+        msg = "WHEREIS {}".format(file_server["url"]).encode()
+
+        s.connect(addr)
+        s.send(msg)
+
+        data = s.recv(1024).decode()
+        data = data.split(" ")
+        if data[0] != 'OK':
+            log.error("Server response not OK")
+            exit(1)
+        return parseAddress(data[1])
+
+
+def getFiles(addr, surl):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.connect(addr)
+        mesg = "GET file FSP/1.0\r\nHostname: {file}\r\nAgent: xgysel00\r\n\r\n".format(
+            file=surl["file"])
+        s.sendall(mesg.encode())
+
+        file = ""
+        while True:
+            data = s.recv(1024).decode()
+            if len(data) == 0:
+                break
+            file += data
+        copyFile(surl["file"], file)
+
+
+def copyFile(filename, file):
+    regex = r"Length: {0,1}\d+\r\n\r\n"
+
+    length = re.findall(regex, file)[0]
+    print(length)
+    length = re.findall(r"\d*", length)
+    print(length)
+
+    # file = re.split(regex, file)[1:]
+
+    # f = open(filename, "wt")
+    # for txt in file:
+    #     f.write(txt)
+    # f.close
 
 
 def main():
-    ap = argparse.ArgumentParser("Fileget")
 
+    # parse program arguments
+    ap = argparse.ArgumentParser("Fileget")
     ap.add_argument("-n", required=True)
     ap.add_argument("-f", required=True)
 
     args = ap.parse_args()
+    # print("file:\t\t" + args.f)
+    # print("namespace:\t" + args.n)
 
-    print("file:\t\t" + args.f)
-    print("namespace:\t" + args.n)
+    # get nameserver address
+    surl = parseUrl(args.f)
+    nameserver = getAddress(parseAddress(args.n), surl)
+    # print(nameserver)
 
-    # try:
-
-    fileserver = ""
-
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.connect(('127.0.0.2', 42069))
-        s.sendall(b'WHEREIS file.server.two')
-        data = s.recv(1024).decode()
-        print(data)
-
-        if (data.split(' ')[0] == 'OK'):
-            print("success")
-            fileserver = data.split(' ')[1]
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.connect((fileserver.split(":")[0], int(fileserver.split(':')[1])))
-        mesg = "GET file FSP/1.0\r\nHostname: {file}\r\nAgent: xgysel00\r\n\r\n".format(
-            file="file")
-        s.sendall(mesg.encode())
-
-        while True:
-            data = s.recv(1024*2).decode()
-            if data == "":
-                break
-            print(data)
+    getFiles(nameserver, surl)
 
 
 if __name__ == "__main__":
