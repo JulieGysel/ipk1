@@ -4,88 +4,122 @@ import argparse
 import socket
 import logging as log
 import re
+import pathlib as path
 
 
 def parseAddress(addr):
+    log.info("Parsing address " + addr)
     addr = addr.split(':')
     return (addr[0], int(addr[1]))
 
 
 def parseUrl(url):
+    log.info("Parsing surl")
     url = url.split('/')
     if (url[0] != 'fsp:' or url[1] != ''):
-        log.error("file url format incorrect")
+        log.error("File url format incorrect")
         log.error(str(url))
         exit(1)
 
     del url[:2]
-    return {'url': url[0], 'file': url[1]}
+    return {'url': url[0], 'file': "/".join(url[1:])}
 
 
 def getAddress(addr, file_server):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
         msg = "WHEREIS {}".format(file_server["url"]).encode()
 
+        log.info("Connecting to server " + str(addr[0]) + ":" + str(addr[1]))
         s.connect(addr)
+
+        log.info("Sending request to server " +
+                 str(addr[0]) + ":" + str(addr[1]))
         s.send(msg)
 
+        log.info("Receiving data from server " +
+                 str(addr[0]) + ":" + str(addr[1]))
         data = s.recv(1024).decode()
+        # todo: space not required
         data = data.split(" ")
         if data[0] != 'OK':
-            log.error("Server response not OK")
+            log.error("Response from server " +
+                      str(addr[0]) + ":" + str(addr[1]) + " not OK")
             exit(1)
+        log.info("Response OK")
         return parseAddress(data[1])
 
 
-def getFiles(addr, surl):
+def getFile(addr, surl):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+
+        log.info("Connecting to server " + str(addr[0]) + ":" + str(addr[1]))
         s.connect(addr)
         mesg = "GET file FSP/1.0\r\nHostname: {file}\r\nAgent: xgysel00\r\n\r\n".format(
             file=surl["file"])
-        s.sendall(mesg.encode())
+
+        log.info("Sending request to server " +
+                 str(addr[0]) + ":" + str(addr[1]))
+        s.send(mesg.encode())
 
         file = ""
         while True:
+            log.info("Receiving data from server " +
+                     str(addr[0]) + ":" + str(addr[1]))
             data = s.recv(1024).decode()
             if len(data) == 0:
                 break
             file += data
-        copyFile(surl["file"], file)
+        return file
 
 
 def copyFile(filename, file):
-    regex = r"Length: {0,1}\d+\r\n\r\n"
+    regex = r"^FSP\/1\.0 Success\r\nLength:\d+(\r\n){1,2}"
 
-    length = re.findall(regex, file)[0]
-    print(length)
-    length = re.findall(r"\d*", length)
-    print(length)
+    head = re.search(regex, file)
+    file = re.sub(regex, "", file)
 
-    # file = re.split(regex, file)[1:]
+    lenght = int(head.group().split('\r\n')[1].split(':')[-1])
+    if lenght != len(file):
+        log.error("Something went wrong downloading file")
+        exit(1)
 
-    # f = open(filename, "wt")
-    # for txt in file:
-    #     f.write(txt)
-    # f.close
+    try:
+        filepath = filename.split('/')
+        filename = filepath[-1]
+        filepath = "/".join(filepath[:-1])
+
+        path.Path(filepath).mkdir(parents=True, exist_ok=True)
+        data_folder = path.Path(filepath)
+
+        log.info("Opening file " + filename + " in directory " + filepath)
+        f = open(data_folder / filename, "wt")
+        f.write(file)
+        f.close
+
+    except:
+        log.error("Something went wrong writing to file")
+        exit(1)
+    log.info("Copying finished")
 
 
 def main():
+
+    log.basicConfig(level=log.INFO)
 
     # parse program arguments
     ap = argparse.ArgumentParser("Fileget")
     ap.add_argument("-n", required=True)
     ap.add_argument("-f", required=True)
 
+    log.info("Parsing program arguments")
     args = ap.parse_args()
-    # print("file:\t\t" + args.f)
-    # print("namespace:\t" + args.n)
 
     # get nameserver address
     surl = parseUrl(args.f)
     nameserver = getAddress(parseAddress(args.n), surl)
-    # print(nameserver)
 
-    getFiles(nameserver, surl)
+    file = getFile(nameserver, surl)
+    copyFile(surl["file"], file)
 
 
 if __name__ == "__main__":
