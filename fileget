@@ -14,18 +14,6 @@ def parseAddress(addr):
     return (addr[0], int(addr[1]))
 
 
-# def parseUrl(url):
-#     log.info("Parsing surl")
-#     url = url.split('/')
-#     if (url[0] != 'fsp:' or url[1] != ''):
-#         log.error("File url format incorrect")
-#         log.error(str(url))
-#         exit(1)
-
-#     del url[:2]
-#     return {'url': url[0], 'file': "/".join(url[1:])}
-
-
 def getAddress(addr, file_server):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
@@ -47,6 +35,7 @@ def getAddress(addr, file_server):
                           str(addr.path) + " not OK")
                 exit(1)
             log.info("Response OK")
+            s.close()
             return urlparse(data[1])
     except:
         log.error("Something went wrong")
@@ -59,8 +48,8 @@ def getFile(addr, surl):
 
             log.info("Connecting to server " + addr.path)
             s.connect(parseAddress(addr.path))
-            mesg = "GET file FSP/1.0\r\nHostname: {file}\r\nAgent: xgysel00\r\n\r\n".format(
-                file=surl.path)
+            mesg = "GET {file} FSP/1.0\r\nHostname: {fileserver}\r\nAgent: xgysel00\r\n\r\n".format(
+                file=surl.path, fileserver=surl.netloc)
 
             log.info("Sending request to server " + addr.path)
             s.send(mesg.encode())
@@ -72,6 +61,8 @@ def getFile(addr, surl):
                 if len(data) == 0:
                     break
                 file += data
+            s.close()
+            # print(file, end='\n\n', )
             return file
     except:
         log.error("Something went wrong")
@@ -82,6 +73,10 @@ def copyFile(filename, file):
     regex = r"^FSP\/1\.0 Success\r\nLength:\d+(\r\n){1,2}"
 
     head = re.search(regex, file)
+    # print(head)
+    if head == None:
+        log.error("Something went wrong")
+        exit(1)
     file = re.sub(regex, "", file)
 
     lenght = int(head.group().split('\r\n')[1].split(':')[-1])
