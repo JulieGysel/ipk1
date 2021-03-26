@@ -5,6 +5,7 @@ import socket
 import logging as log
 import re
 import pathlib as path
+from urllib.parse import urlparse
 
 
 def parseAddress(addr):
@@ -13,63 +14,68 @@ def parseAddress(addr):
     return (addr[0], int(addr[1]))
 
 
-def parseUrl(url):
-    log.info("Parsing surl")
-    url = url.split('/')
-    if (url[0] != 'fsp:' or url[1] != ''):
-        log.error("File url format incorrect")
-        log.error(str(url))
-        exit(1)
+# def parseUrl(url):
+#     log.info("Parsing surl")
+#     url = url.split('/')
+#     if (url[0] != 'fsp:' or url[1] != ''):
+#         log.error("File url format incorrect")
+#         log.error(str(url))
+#         exit(1)
 
-    del url[:2]
-    return {'url': url[0], 'file': "/".join(url[1:])}
+#     del url[:2]
+#     return {'url': url[0], 'file': "/".join(url[1:])}
 
 
 def getAddress(addr, file_server):
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        msg = "WHEREIS {}".format(file_server["url"]).encode()
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            msg = "WHEREIS {}".format(file_server.netloc).encode()
 
-        log.info("Connecting to server " + str(addr[0]) + ":" + str(addr[1]))
-        s.connect(addr)
+            log.info("Connecting to server " + addr.path)
 
-        log.info("Sending request to server " +
-                 str(addr[0]) + ":" + str(addr[1]))
-        s.send(msg)
+            s.connect(parseAddress(addr.path))
 
-        log.info("Receiving data from server " +
-                 str(addr[0]) + ":" + str(addr[1]))
-        data = s.recv(1024).decode()
-        # todo: space not required
-        data = data.split(" ")
-        if data[0] != 'OK':
-            log.error("Response from server " +
-                      str(addr[0]) + ":" + str(addr[1]) + " not OK")
-            exit(1)
-        log.info("Response OK")
-        return parseAddress(data[1])
+            log.info("Sending request to server " + str(addr.path))
+            s.send(msg)
+
+            log.info("Receiving data from server " + str(addr.path))
+            data = s.recv(1024).decode()
+            # todo: space not required
+            data = data.split(" ")
+            if data[0] != 'OK':
+                log.error("Response from server " +
+                          str(addr.path) + " not OK")
+                exit(1)
+            log.info("Response OK")
+            return urlparse(data[1])
+    except:
+        log.error("Something went wrong")
+        exit(1)
 
 
 def getFile(addr, surl):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
 
-        log.info("Connecting to server " + str(addr[0]) + ":" + str(addr[1]))
-        s.connect(addr)
-        mesg = "GET file FSP/1.0\r\nHostname: {file}\r\nAgent: xgysel00\r\n\r\n".format(
-            file=surl["file"])
+            log.info("Connecting to server " + addr.path)
+            s.connect(parseAddress(addr.path))
+            mesg = "GET file FSP/1.0\r\nHostname: {file}\r\nAgent: xgysel00\r\n\r\n".format(
+                file=surl.path)
 
-        log.info("Sending request to server " +
-                 str(addr[0]) + ":" + str(addr[1]))
-        s.send(mesg.encode())
+            log.info("Sending request to server " + addr.path)
+            s.send(mesg.encode())
 
-        file = ""
-        while True:
-            log.info("Receiving data from server " +
-                     str(addr[0]) + ":" + str(addr[1]))
-            data = s.recv(1024).decode()
-            if len(data) == 0:
-                break
-            file += data
-        return file
+            file = ""
+            while True:
+                log.info("Receiving data from server " + addr.path)
+                data = s.recv(1024).decode()
+                if len(data) == 0:
+                    break
+                file += data
+            return file
+    except:
+        log.error("Something went wrong")
+        exit(1)
 
 
 def copyFile(filename, file):
@@ -84,9 +90,11 @@ def copyFile(filename, file):
         exit(1)
 
     try:
+        # print(filename)
         filepath = filename.split('/')
         filename = filepath[-1]
-        filepath = "/".join(filepath[:-1])
+        filepath = "/".join(filepath[1:-1])
+        # print(filepath)
 
         path.Path(filepath).mkdir(parents=True, exist_ok=True)
         data_folder = path.Path(filepath)
@@ -115,11 +123,15 @@ def main():
     args = ap.parse_args()
 
     # get nameserver address
-    surl = parseUrl(args.f)
-    nameserver = getAddress(parseAddress(args.n), surl)
+    nameserver = getAddress(
+        addr=urlparse(args.n),
+        file_server=urlparse(args.f)
+    )
 
-    file = getFile(nameserver, surl)
-    copyFile(surl["file"], file)
+    # get file content
+    surl = urlparse(args.f)
+    file = getFile(addr=nameserver, surl=surl)
+    copyFile(surl.path, file)
 
 
 if __name__ == "__main__":
