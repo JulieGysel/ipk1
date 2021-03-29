@@ -6,6 +6,7 @@ import logging as log
 import re
 import pathlib as path
 from urllib.parse import urlparse
+import sys
 
 
 def parseAddress(addr):
@@ -49,40 +50,49 @@ def getFile(addr, surl):
             log.info("Connecting to server " + addr.path)
             s.connect(parseAddress(addr.path))
             mesg = "GET {file} FSP/1.0\r\nHostname: {fileserver}\r\nAgent: xgysel00\r\n\r\n".format(
-                file=surl.path, fileserver=surl.netloc)
+                file=re.sub(r'^\/', '', surl.path), fileserver=surl.netloc)
 
             log.info("Sending request to server " + addr.path)
             s.send(mesg.encode())
 
-            file = ""
+            file = b""
             while True:
                 log.info("Receiving data from server " + addr.path)
-                data = s.recv(1024).decode()
+                data = s.recv(1024)
+                # print(data)
                 if len(data) == 0:
                     break
-                file += data
+                file = b''.join([file, data])
             s.close()
             # print(file, end='\n\n', )
             return file
     except:
-        log.error("Something went wrong")
+        print()
+        print(sys.exc_info())
+        log.error("Something went wrong getting file")
         exit(1)
 
 
-def copyFile(filename, file):
-    regex = r"^FSP\/1\.0 Success\r\nLength:\d+(\r\n){1,2}"
+def checkFile(file):
+    regex = br"^FSP\/1\.0 Success\r\nLength:\d+(\r\n){1,2}"
 
     head = re.search(regex, file)
     # print(head)
     if head == None:
-        log.error("Something went wrong")
+        log.error("Something went wrong (no head)")
+        print(file.decode())
         exit(1)
-    file = re.sub(regex, "", file)
+    file = re.sub(regex, b"", file)
 
-    lenght = int(head.group().split('\r\n')[1].split(':')[-1])
+    lenght = int(head.group().split(b'\r\n')[1].split(b':')[-1])
     if lenght != len(file):
         log.error("Something went wrong downloading file")
         exit(1)
+    return file
+
+
+def copyFile(filename, file):
+    file = checkFile(file=file)
 
     try:
         # print(filename)
@@ -95,7 +105,7 @@ def copyFile(filename, file):
         data_folder = path.Path(filepath)
 
         log.info("Opening file " + filename + " in directory " + filepath)
-        f = open(data_folder / filename, "wt")
+        f = open(data_folder / filename, "wb")
         f.write(file)
         f.close
 
@@ -125,6 +135,24 @@ def main():
 
     # get file content
     surl = urlparse(args.f)
+
+    # get file OR get all?
+
+    if surl.path == '/*':
+        surl = urlparse(re.sub(r'\*$', 'index', args.f))
+        index = getFile(addr=nameserver, surl=surl)
+        index = checkFile(file=index)
+
+        fileList = index.decode().split('\r\n')
+        fileList.remove('')
+        print(fileList)
+
+        for file in fileList:
+            surl = urlparse(re.sub(r'\*$', file, args.f))
+            print(surl.path)
+            fileContent = getFile(addr=nameserver, surl=surl)
+            copyFile(surl.path, fileContent)
+
     file = getFile(addr=nameserver, surl=surl)
     copyFile(surl.path, file)
 
