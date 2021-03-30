@@ -10,7 +10,6 @@ from urllib.parse import urlparse, ParseResult
 
 
 def parseAddress(addr):
-    log.info("Parsing address " + addr)
     addr = addr.split(':')
     return (addr[0], int(addr[1]))
 
@@ -20,8 +19,6 @@ def getAddress(addr, file_server):
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.settimeout(30)
             msg = "WHEREIS {}".format(file_server.netloc).encode()
-
-            log.info("Connecting to server " + addr.path)
 
             s.connect(parseAddress(addr.path))
 
@@ -33,9 +30,7 @@ def getAddress(addr, file_server):
             # todo: space not required
             data = data.split(" ")
             if data[0] != 'OK':
-                log.error("Response from server " +
-                          str(addr.path) + " not OK")
-                exit(1)
+                sys.exit("Response from server " + str(addr.path) + " not OK")
             log.info("Response OK")
             s.close()
             return urlparse(data[1])
@@ -66,10 +61,7 @@ def getFile(addr, surl):
             s.close()
             return file
     except:
-        print()
-        print(sys.exc_info())
-        log.error("Something went wrong getting file")
-        exit(1)
+        sys.exit("Something went wrong getting file")
 
 
 def checkFile(file):
@@ -78,15 +70,12 @@ def checkFile(file):
     head = re.search(regex, file)
     # print(head)
     if head == None:
-        log.error("Something went wrong (no head)")
-        print(file.decode())
-        exit(1)
+        sys.exit("Something went wrong downloading file, missing header")
     file = re.sub(regex, b"", file)
 
     lenght = int(head.group().split(b'\r\n')[1].split(b':')[-1])
     if lenght != len(file):
-        log.error("Something went wrong downloading file")
-        exit(1)
+        sys.exit("Something went wrong downloading file")
     return file
 
 
@@ -107,14 +96,14 @@ def copyFile(filename, file):
         f.close
 
     except:
-        log.error("Something went wrong writing to file")
-        exit(1)
+        sys.exit("Somehting went wrong writing to file")
+
     log.info("Copying finished")
 
 
 def main():
 
-    # log.basicConfig(level=log.INFO)
+    log.basicConfig(level=log.INFO)
 
     # parse program arguments
     ap = argparse.ArgumentParser("Fileget")
@@ -130,9 +119,10 @@ def main():
     nameserver = getAddress(addr=name_server, file_server=file_server)
 
     # get file OR get all?
-
-    # get all
     if file_server.path.split('/')[-1] == '*':
+        # get all
+
+        # get index
         file_server = ParseResult(file_server.scheme, file_server.netloc,
                                   'index', file_server.params, file_server.query, file_server.fragment)
 
@@ -142,6 +132,7 @@ def main():
         fileList = index.decode().split('\r\n')
         fileList.remove('')
 
+        # get all files
         for file in fileList:
             file_server = ParseResult(file_server.scheme, file_server.netloc,
                                       file, file_server.params, file_server.query, file_server.fragment)
@@ -155,6 +146,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# Todo : socket.settimeout()
-# Todo : optimize info messages
