@@ -83,6 +83,7 @@ def copyFile(filename, file):
     file = checkFile(file=file)
 
     try:
+        # create folders if necessary
         filepath = filename.split('/')
         filename = filepath[-1]
         filepath = "/".join(filepath[1:-1])
@@ -91,12 +92,14 @@ def copyFile(filename, file):
         data_folder = path.Path(filepath)
 
         log.info("Opening file " + filename + " in directory " + filepath)
+
+        # open and write to file
         f = open(data_folder / filename, "wb")
         f.write(file)
         f.close
 
     except:
-        sys.exit("Somehting went wrong writing to file")
+        sys.exit("Something went wrong writing to file")
 
     log.info("Copying finished")
 
@@ -120,8 +123,6 @@ def main():
 
     # get file OR get all?
     if file_server.path.split('/')[-1] == '*':
-        # get all
-
         # get index
         file_server = ParseResult(file_server.scheme, file_server.netloc,
                                   'index', file_server.params, file_server.query, file_server.fragment)

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+rm log
+
 echo "TESTING GET file"
 for file in $(find nameserver/file.server.one -type f | cut -d'/' -f 3,4)
 do
@@ -10,7 +12,7 @@ done
 
 echo ""
 echo "TESTING GETALL"
-./fileget -n 127.0.0.2:42069 -f fsp://file.server.one/* >> log
+./fileget -n 127.0.0.2:42069 -f fsp://file.server.one/* 2>> log
 
 for file in $(find nameserver/file.server.one -type f | cut -d'/' -f 3,4)
 do
@@ -19,3 +21,4 @@ do
 done
 
 rm -r folder
+cat log | grep "Something went wrong"
