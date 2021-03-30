@@ -46,6 +46,7 @@ def getAddress(addr, file_server):
 def getFile(addr, surl):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(30)
 
             log.info("Connecting to server " + addr.path)
             s.connect(parseAddress(addr.path))
@@ -59,12 +60,10 @@ def getFile(addr, surl):
             log.info("Receiving data from server " + addr.path)
             while True:
                 data = s.recv(1024)
-                # print(data)
                 if len(data) == 0:
                     break
                 file = b''.join([file, data])
             s.close()
-            # print(file, end='\n\n', )
             return file
     except:
         print()
@@ -95,11 +94,9 @@ def copyFile(filename, file):
     file = checkFile(file=file)
 
     try:
-        # print(filename)
         filepath = filename.split('/')
         filename = filepath[-1]
         filepath = "/".join(filepath[1:-1])
-        # print(filepath)
 
         path.Path(filepath).mkdir(parents=True, exist_ok=True)
         data_folder = path.Path(filepath)
@@ -117,7 +114,7 @@ def copyFile(filename, file):
 
 def main():
 
-    log.basicConfig(level=log.INFO)
+    # log.basicConfig(level=log.INFO)
 
     # parse program arguments
     ap = argparse.ArgumentParser("Fileget")
@@ -136,11 +133,6 @@ def main():
 
     # get all
     if file_server.path.split('/')[-1] == '*':
-        # substitute /path/* for 'index'
-        path = file_server.path.split('/')
-        path = path[1:-1]
-        path = '/'.join(path)
-
         file_server = ParseResult(file_server.scheme, file_server.netloc,
                                   'index', file_server.params, file_server.query, file_server.fragment)
 
@@ -148,15 +140,13 @@ def main():
         index = checkFile(file=index)
 
         fileList = index.decode().split('\r\n')
-        print(fileList)
         fileList.remove('')
 
         for file in fileList:
-            if len(path) == 0 or file.startswith(path):
-                file_server = ParseResult(file_server.scheme, file_server.netloc,
-                                          file, file_server.params, file_server.query, file_server.fragment)
-                fileContent = getFile(addr=nameserver, surl=file_server)
-                copyFile(file_server.path, fileContent)
+            file_server = ParseResult(file_server.scheme, file_server.netloc,
+                                      file, file_server.params, file_server.query, file_server.fragment)
+            fileContent = getFile(addr=nameserver, surl=file_server)
+            copyFile('/'+file_server.path, fileContent)
     else:
         # get file
         file = getFile(addr=nameserver, surl=file_server)
