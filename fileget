@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-import argparse
-import socket
-import logging as log
 import re
-import pathlib as path
-from urllib.parse import urlparse
 import sys
+import socket
+import argparse
+import logging as log
+import pathlib as path
+from urllib.parse import urlparse, ParseResult
 
 
 def parseAddress(addr):
@@ -18,6 +18,7 @@ def parseAddress(addr):
 def getAddress(addr, file_server):
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(30)
             msg = "WHEREIS {}".format(file_server.netloc).encode()
 
             log.info("Connecting to server " + addr.path)
@@ -39,8 +40,7 @@ def getAddress(addr, file_server):
             s.close()
             return urlparse(data[1])
     except:
-        log.error("Something went wrong")
-        exit(1)
+        sys.exit("Something went wrong getting fileserver address")
 
 
 def getFile(addr, surl):
@@ -56,8 +56,8 @@ def getFile(addr, surl):
             s.send(mesg.encode())
 
             file = b""
+            log.info("Receiving data from server " + addr.path)
             while True:
-                log.info("Receiving data from server " + addr.path)
                 data = s.recv(1024)
                 # print(data)
                 if len(data) == 0:
@@ -128,34 +128,43 @@ def main():
     args = ap.parse_args()
 
     # get nameserver address
-    nameserver = getAddress(
-        addr=urlparse(args.n),
-        file_server=urlparse(args.f)
-    )
-
-    # get file content
-    surl = urlparse(args.f)
+    name_server = urlparse(args.n)
+    file_server = urlparse(args.f)
+    nameserver = getAddress(addr=name_server, file_server=file_server)
 
     # get file OR get all?
 
-    if surl.path == '/*':
-        surl = urlparse(re.sub(r'\*$', 'index', args.f))
-        index = getFile(addr=nameserver, surl=surl)
+    # get all
+    if file_server.path.split('/')[-1] == '*':
+        # substitute /path/* for 'index'
+        path = file_server.path.split('/')
+        path = path[1:-1]
+        path = '/'.join(path)
+
+        file_server = ParseResult(file_server.scheme, file_server.netloc,
+                                  'index', file_server.params, file_server.query, file_server.fragment)
+
+        index = getFile(addr=nameserver, surl=file_server)
         index = checkFile(file=index)
 
         fileList = index.decode().split('\r\n')
-        fileList.remove('')
         print(fileList)
+        fileList.remove('')
 
         for file in fileList:
-            surl = urlparse(re.sub(r'\*$', file, args.f))
-            print(surl.path)
-            fileContent = getFile(addr=nameserver, surl=surl)
-            copyFile(surl.path, fileContent)
-
-    file = getFile(addr=nameserver, surl=surl)
-    copyFile(surl.path, file)
+            if len(path) == 0 or file.startswith(path):
+                file_server = ParseResult(file_server.scheme, file_server.netloc,
+                                          file, file_server.params, file_server.query, file_server.fragment)
+                fileContent = getFile(addr=nameserver, surl=file_server)
+                copyFile(file_server.path, fileContent)
+    else:
+        # get file
+        file = getFile(addr=nameserver, surl=file_server)
+        copyFile(file_server.path, file)
 
 
 if __name__ == "__main__":
     main()
+
+# Todo : socket.settimeout()
+# Todo : optimize info messages
