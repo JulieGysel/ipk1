@@ -27,8 +27,8 @@ def getAddress(addr, file_server):
 
             log.info("Receiving data from server " + str(addr.path))
             data = s.recv(1024).decode()
-            # todo: space not required
             data = data.split(" ")
+
             if data[0] != 'OK':
                 sys.exit("Response from server " + str(addr.path) + " not OK")
             log.info("Response OK")
@@ -65,17 +65,17 @@ def getFile(addr, surl):
 
 
 def checkFile(file):
-    regex = br"^FSP\/1\.0 Success\r\nLength:\d+(\r\n){1,2}"
-
+    # regex to find response header if succesful
+    regex = br"^FSP\/1\.0 Success\r\nLength:\s?\d+(\r\n){1,2}"
     head = re.search(regex, file)
-    # print(head)
     if head == None:
-        sys.exit("Something went wrong downloading file, missing header")
+        sys.exit("Something went wrong downloading file, header not correct")
     file = re.sub(regex, b"", file)
 
+    # check file length
     lenght = int(head.group().split(b'\r\n')[1].split(b':')[-1])
     if lenght != len(file):
-        sys.exit("Something went wrong downloading file")
+        sys.exit("Something went wrong downloading file, file length not correct")
     return file
 
 
